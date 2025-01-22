@@ -1,244 +1,204 @@
-// #include <node.h>
-// #include <v8.h>
-// #include <windows.h> // Per Windows (LoadLibrary, GetProcAddress)
-// #include <string>
-
-// namespace demo
-// {
-
-//     using v8::Array;
-//     using v8::Context;
-//     using v8::Exception;
-//     using v8::Function;
-//     using v8::FunctionCallbackInfo;
-//     using v8::HandleScope;
-//     using v8::Isolate;
-//     using v8::Local;
-//     using v8::Object;
-//     using v8::String;
-//     using v8::Value;
-
-//     // Funzione per caricare la libreria dinamica e chiamare le funzioni
-//     void LoadDLL(const FunctionCallbackInfo<Value> &args)
-//     {
-//         Isolate *isolate = args.GetIsolate();
-//         HandleScope scope(isolate);
-
-//         // Controlla se sono stati passati i parametri corretti
-//         if (args.Length() < 4 || !args[0]->IsFunction() || !args[1]->IsNumber() || !args[2]->IsNumber() || !args[3]->IsArray())
-//         {
-//             isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Sono richiesti un callback, productId, vendorId e un array di dati").ToLocalChecked()));
-//             return;
-//         }
-
-//         // Ottieni il callback
-//         Local<Function> callback = Local<Function>::Cast(args[0]);
-
-//         // Ottieni productId e vendorId
-//         unsigned short productId = static_cast<unsigned short>(args[1]->Uint32Value(isolate->GetCurrentContext()).ToChecked());
-//         unsigned short vendorId = static_cast<unsigned short>(args[2]->Uint32Value(isolate->GetCurrentContext()).ToChecked());
-
-//         // Ottieni i dati del report
-//         Local<Array> inputData = Local<Array>::Cast(args[3]); // Cambia l'indice a 3 per l'array di dati
-//         const size_t reportLength = inputData->Length();
-//         unsigned char *reportData = new unsigned char[reportLength]; // Dichiarazione di reportData
-//         for (size_t i = 0; i < reportLength; i++)
-//         {
-//             reportData[i] = static_cast<unsigned char>(inputData->Get(isolate->GetCurrentContext(), i).ToLocalChecked()->Uint32Value(isolate->GetCurrentContext()).ToChecked());
-//         }
-
-//         // Controlla se sono stati passati i parametri corretti
-//         if (args.Length() < 2 || !args[0]->IsFunction() || !args[1]->IsArray())
-//         {
-//             isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Sono richiesti un callback e un array di dati").ToLocalChecked()));
-//             return;
-//         }
-
-//         // Percorso della DLL (puoi passare il percorso come argomento)
-//         std::string dllPath = "hidapi.dll"; // Cambia il nome della DLL se necessario
-
-//         // Carica la DLL
-//         HMODULE hModule = LoadLibrary(dllPath.c_str());
-//         if (!hModule)
-//         {
-//             std::string errorMessage = "Errore: impossibile caricare la DLL " + dllPath;
-//             Local<Value> argv[] = {String::NewFromUtf8(isolate, errorMessage.c_str()).ToLocalChecked()};
-//             callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//             delete[] reportData;
-//             return;
-//         }
-
-//         // Dichiarazione dei tipi di funzione
-//         typedef int (*InitFunctionType)();
-//         typedef int (*ExitFunctionType)();
-//         typedef void *(*OpenFunctionType)(unsigned short, unsigned short, const wchar_t *);
-//         typedef int (*SendFeatureReportFunctionType)(void *, const unsigned char *, size_t);
-//         typedef int (*CloseFunctionType)(void *);
-
-//         // Ottieni gli indirizzi delle funzioni
-//         FARPROC initFunction = GetProcAddress(hModule, "hid_init");
-//         FARPROC exitFunction = GetProcAddress(hModule, "hid_exit");
-//         FARPROC openFunction = GetProcAddress(hModule, "hid_open");
-//         FARPROC sendFeatureReportFunction = GetProcAddress(hModule, "hid_send_feature_report");
-//         FARPROC closeFunction = GetProcAddress(hModule, "hid_close");
-
-//         if (!initFunction || !exitFunction || !openFunction || !sendFeatureReportFunction || !closeFunction)
-//         {
-//             std::string errorMessage = "Errore: impossibile trovare una o più funzioni nella DLL " + dllPath;
-//             Local<Value> argv[] = {String::NewFromUtf8(isolate, errorMessage.c_str()).ToLocalChecked()};
-//             callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//             FreeLibrary(hModule); // Libera la DLL
-//             delete[] reportData;
-//             return;
-//         }
-
-//         // Cast dei puntatori a funzione
-//         InitFunctionType init = reinterpret_cast<InitFunctionType>(initFunction);
-//         ExitFunctionType exit = reinterpret_cast<ExitFunctionType>(exitFunction);
-//         OpenFunctionType open = reinterpret_cast<OpenFunctionType>(openFunction);
-//         SendFeatureReportFunctionType sendFeatureReport = reinterpret_cast<SendFeatureReportFunctionType>(sendFeatureReportFunction);
-//         CloseFunctionType close = reinterpret_cast<CloseFunctionType>(closeFunction);
-
-//         // Chiama hid_init
-//         int result = init();
-//         if (result != 0)
-//         {
-//             std::string errorMessage = "Errore: la funzione 'hid_init' ha restituito un errore";
-//             Local<Value> argv[] = {String::NewFromUtf8(isolate, errorMessage.c_str()).ToLocalChecked()};
-//             callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//             FreeLibrary(hModule); // Libera la DLL
-//             delete[] reportData;
-//             return;
-//         }
-
-//         // Chiama hid_open (esempio con un dispositivo specifico)
-//         void *deviceHandle = open(0x1234, 0x5678, NULL); // Cambia con i valori corretti
-//         if (!deviceHandle)
-//         {
-//             std::string errorMessage = "Errore: la funzione 'hid_open' ha restituito NULL";
-//             Local<Value> argv[] = {String::NewFromUtf8(isolate, errorMessage.c_str()).ToLocalChecked()};
-//             callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//             exit();               // Chiama hid_exit
-//             FreeLibrary(hModule); // Libera la DLL
-//             delete[] reportData;
-//             return;
-//         }
-
-//         // Chiama hid_send_feature_report
-//         int sendResult = sendFeatureReport(deviceHandle, reportData, reportLength);
-//         if (sendResult < 0)
-//         {
-//             std::string errorMessage = "Errore: la funzione 'hid_send_feature_report' ha restituito un errore";
-//             Local<Value> argv[] = {String::NewFromUtf8(isolate, errorMessage.c_str()).ToLocalChecked()};
-//             callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//             close(deviceHandle);  // Chiama hid_close
-//             exit();               // Chiama hid_exit
-//             FreeLibrary(hModule); // Libera la DLL
-//             delete[] reportData;
-//             return;
-//         }
-
-//         // Chiama hid_close
-//         close(deviceHandle);
-
-//         // Chiama hid_exit
-//         exit();
-
-//         // Libera la DLL
-//         FreeLibrary(hModule);
-//         delete[] reportData;
-
-//         // Restituisci un messaggio di successo
-//         std::string successMessage = "DLL caricata e funzioni chiamate con successo. Report inviato correttamente.";
-//         Local<Value> argv[] = {String::NewFromUtf8(isolate, successMessage.c_str()).ToLocalChecked()};
-//         callback->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv).ToLocalChecked();
-//     }
-
-//     // Funzione di inizializzazione dell'addon
-//     void Initialize(Local<Object> exports)
-//     {
-//         NODE_SET_METHOD(exports, "loadDLL", LoadDLL); // Registra la funzione loadDLL
-//     }
-
-//     NODE_MODULE(NODE_GYP_MODULE_NAME, Initialize)
-
-// } // namespace demo
-#include <node.h>
-#include <v8.h>
-#include <windows.h> 
+#include "node_modules\node-addon-api\napi.h"
+#include "./hidapi/hidapi/hidapi.h"
+#include <iostream>
 #include <string>
+#include <vector>
+#include <sstream>
+struct HIDField {
+    unsigned char tag;
+    unsigned char type;
+    unsigned char size;
+    unsigned char data;
+};
 
-namespace demo
+// Funzione per analizzare il descrittore HID
+void parseHIDReportDescriptor(const unsigned char* descriptor, int length, int& numButtons, int& numAxes) {
+    numButtons = 0;
+    numAxes = 0;
+
+    std::vector<HIDField> fields;
+    int index = 0;
+
+    // Decodifica il descrittore HID
+    while (index < length) {
+        HIDField field;
+        field.tag = descriptor[index] & 0xF0; // Estrae il tag (4 bit alti)
+        field.type = (descriptor[index] & 0x0C) >> 2; // Estrae il tipo (2 bit centrali)
+        field.size = descriptor[index] & 0x03; // Estrae la dimensione (2 bit bassi)
+
+        // Determina la dimensione effettiva del campo
+        if (field.size == 0x03) {
+            field.size = descriptor[index + 1]; // Dimensione variabile
+            index += 2;
+        } else {
+            field.size = (field.size == 0x00) ? 1 : (field.size == 0x01) ? 2 : 4;
+            index++;
+        }
+
+        // Leggi i dati del campo
+        field.data = descriptor[index];
+        fields.push_back(field);
+        index++;
+    }
+
+    // Analizza i campi per determinare il numero di pulsanti e assi
+    for (const auto& field : fields) {
+        if (field.type == 0x01) { // Tipo "Main"
+            switch (field.tag) {
+                case 0x80: // Input
+                case 0x90: // Output
+                case 0xB0: // Feature
+                    // Controlla i bit del campo per determinare pulsanti e assi
+                    if (field.data & 0x02) { // Bit di pulsante
+                        numButtons += field.size * 8; // Ogni bit rappresenta un pulsante
+                    }
+                    if (field.data & 0x04) { // Bit di asse
+                        numAxes += field.size; // Ogni byte rappresenta un asse
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+
+Napi::Value getControllerData(const Napi::CallbackInfo &info)
 {
-    using v8::Array;
-    using v8::Context;
-    using v8::Exception;
-    using v8::Function;
-    using v8::FunctionCallbackInfo;
-    using v8::HandleScope;
-    using v8::Isolate;
-    using v8::Local;
-    using v8::Object;
-    using v8::String;
-    using v8::Value;
-    using v8::Number;
-    using v8::Null; 
+    Napi::Env env = info.Env();
 
-    void LoadDLL(const FunctionCallbackInfo<Value> &args)
+    // Verifica che l'input sia valido
+    if (info.Length() < 1 || !info[0].IsObject())
     {
-        Isolate *isolate = args.GetIsolate();
-        HandleScope scope(isolate);
-
-        if (args.Length() < 4 || !args[0]->IsFunction() || !args[1]->IsNumber() || !args[2]->IsNumber() || !args[3]->IsArray())
-        {
-            isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Sono richiesti un callback, productId, vendorId e un array di dati").ToLocalChecked()));
-            return;
-        }
-
-        Local<Function> callback = Local<Function>::Cast(args[0]);
-        int productId = args[1]->NumberValue(isolate->GetCurrentContext()).ToChecked();
-        int vendorId = args[2]->NumberValue(isolate->GetCurrentContext()).ToChecked();
-        Local<Array> dataArray = Local<Array>::Cast(args[3]);
-
-        HINSTANCE hinstLib = LoadLibraryA("./hidapi.dll");
-
-        if (hinstLib == NULL)
-        {
-            isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Errore durante il caricamento della libreria").ToLocalChecked()));
-            return;
-        }
-
-        FARPROC pfnProc = GetProcAddress(hinstLib, "YourFunctionName");
-
-        if (pfnProc == NULL)
-        {
-            isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Errore durante il recupero del puntatore alla funzione").ToLocalChecked()));
-            return;
-        }
-
-        unsigned char* reportData = new unsigned char[dataArray->Length()];
-        for (size_t i = 0; i < dataArray->Length(); ++i) {
-            reportData[i] = static_cast<unsigned char>(dataArray->Get(isolate->GetCurrentContext(), i).ToLocalChecked()->NumberValue(isolate->GetCurrentContext()).ToChecked());
-        }
-
-        int result = ((int (*)(int, int, unsigned char *))pfnProc)(productId, vendorId, reportData);
-
-        delete[] reportData;
-
-        Local<Value> argv[] = {
-            Number::New(isolate, result)
-        };
-
-        callback->Call(isolate->GetCurrentContext(), Null(isolate), 1, argv);
-
-        FreeLibrary(hinstLib);
+        Napi::TypeError::New(env, "Expected an object as argument").ThrowAsJavaScriptException();
+        return env.Null();
     }
 
-    void Initialize(Local<Object> exports)
+    // Recupera l'oggetto con i dati del controller
+    Napi::Object obj = info[0].As<Napi::Object>();
+    int productId = obj.Get("productId").As<Napi::Number>().Int32Value();
+    int vendorId = obj.Get("vendorId").As<Napi::Number>().Int32Value();
+    std::string product = obj.Has("product") ? obj.Get("product").As<Napi::String>().Utf8Value() : "Unknown Product";
+
+    // Log iniziale
+    std::cout << "[INFO C++] Controller ricevuto:\n"
+              << "  Product ID: " << productId << "\n"
+              << "  Vendor ID: " << vendorId << "\n"
+              << "  Product: " << product << std::endl;
+
+    // Inizializza HIDAPI
+    if (hid_init() != 0)
     {
-        NODE_SET_METHOD(exports, "loadDLL", LoadDLL);
+        Napi::TypeError::New(env, "Failed to initialize HIDAPI").ThrowAsJavaScriptException();
+        return env.Null();
     }
 
-    NODE_MODULE(addon, Initialize)
+    // Enumerazione per controllare il percorso (USB o Bluetooth)
+    struct hid_device_info *device_info = hid_enumerate(vendorId, productId);
+    bool isBluetooth = false;
+    const char *device_path = nullptr;
 
-} // namespace demo
+    while (device_info)
+    {
+        if (device_info->vendor_id == vendorId && device_info->product_id == productId)
+        {
+            device_path = device_info->path;
+            // Controlla se il percorso indica una connessione Bluetooth
+            if (device_path && std::string(device_path).find("bluetooth") != std::string::npos)
+            {
+                isBluetooth = true;
+                break;
+            }
+        }
+        device_info = device_info->next;
+    }
+    hid_free_enumeration(device_info);
+
+    if (!device_path)
+    {
+        Napi::TypeError::New(env, "Failed to locate HID device").ThrowAsJavaScriptException();
+        hid_exit();
+        return env.Null();
+    }
+
+    std::cout << "[INFO C++] Device Path: " << device_path << std::endl;
+    if (isBluetooth)
+        std::cout << "[INFO C++] Device is connected via Bluetooth." << std::endl;
+    else
+        std::cout << "[INFO C++] Device is connected via USB." << std::endl;
+
+    // Apri il dispositivo HID
+    hid_device *device = hid_open(vendorId, productId, nullptr);
+    if (!device)
+    {
+        hid_exit();
+        Napi::TypeError::New(env, "Failed to open HID device").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    // Lettura dei dati dal dispositivo
+    unsigned char buf[1024];
+    int res = hid_read(device, buf, sizeof(buf));
+    if (res < 0)
+    {
+        std::cerr << "Errore nella lettura del report di input. Codice di errore: " << res << std::endl;
+        hid_close(device);
+        hid_exit();
+        return env.Null();
+    }
+
+    // Log del report ricevuto
+    std::cerr << "[DEBUG] Feature report length: " << res << std::endl;
+    std::cerr << "[DEBUG] Data in report: ";
+    for (int i = 0; i < res; i++)
+    {
+        std::cerr << "0x" << std::hex << (int)buf[i] << " ";
+    }
+    std::cerr << std::endl;
+
+    // Ottieni il descrittore HID
+    unsigned char descriptor[255];  // Un buffer abbastanza grande
+    int descriptor_length = hid_get_report_descriptor(device, descriptor, sizeof(descriptor));  // Ottieni il descrittore del report
+    if (descriptor_length < 0)
+    {
+        std::cerr << "Errore nel recupero del descrittore HID. Codice di errore: " << descriptor_length << std::endl;
+        hid_close(device);
+        hid_exit();
+        return env.Null();
+    }
+
+    std::cerr << "[DEBUG] HID descriptor (length: " << descriptor_length << "): ";
+    for (int i = 0; i < descriptor_length; i++)
+    {
+        std::cerr << "0x" << std::hex << (int)descriptor[i] << " ";
+    }
+    std::cerr << std::endl;
+
+    // Variabili per il conteggio di pulsanti e assi
+    int numButtons = 0;
+    int numAxes = 0;
+
+    // Analizza il descrittore HID
+    parseHIDReportDescriptor(descriptor, descriptor_length, numButtons, numAxes);
+
+    // Chiudi il dispositivo e termina HIDAPI
+    hid_close(device);
+    hid_exit();
+
+    // Restituisci la risposta
+    std::string response = "Controller elaborato con successo via " + std::string(isBluetooth ? "Bluetooth" : "USB") + ": " + product + 
+                           " (Pulsanti: " + std::to_string(numButtons) + ", Assi: " + std::to_string(numAxes) + ")";
+    return Napi::String::New(env, response);
+}
+
+// Funzione di inizializzazione del modulo
+Napi::Object Init(Napi::Env env, Napi::Object exports)
+{
+    exports.Set("getControllerData", Napi::Function::New(env, getControllerData));
+    return exports;
+}
+
+// Macro per definire il modulo
+NODE_API_MODULE(addon, Init)
