@@ -1,21 +1,99 @@
-const addon = require('./build/Release/addon.node');
+const myAddon = require('./build/Release/myAddon');
 const http = require('http');
-const port = 3001;
-const HID = require('node-hid');
+const port = 3000;
+const address = 'localhost';
 
-let previousControllers = [];
-let selectedController = null;
 
-const server = http.createServer((req, res) => {
-    if (req.url === '/controllers' && req.method === 'GET') {
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify(previousControllers));
-    } else {
-        res.statusCode = 404;
-        res.end('Not Found');
+async function getControllerData(controller) {
+    try {
+        console.log('Caricamento dell\'addon...');
+
+        if (!controller.productId || !controller.vendorId) {
+            console.error('[ERRORE] Controller non compatibile: manca productId o vendorId.');
+            return 'Controller non compatibile';
+        }
+
+        //Passa i dati del controller all'addon e ottieni il risultato
+        const result = myAddon.getControllerData({
+            productId: controller.productId,
+            vendorId: controller.vendorId,
+            product: controller.productName || "Unknown Product",
+        });
+
+        console.log('[INFO] Risultato dall\'addon:', result); 
+        return result; // Restituisce il risultato all'handler HTTP
+
+    } catch (error) {
+        console.error('[ERRORE] Durante l\'esecuzione dell\'addon:', error);
+        return 'Errore durante l\'esecuzione dell\'addon';
     }
+}
+
+// Crea il server HTTP
+const server = http.createServer((req, res) => {
+    console.log(`Client connected: ${req.socket.remoteAddress}`); // Stampa l'indirizzo IP del client
+
+    // Imposta gli header CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Accumula i dati ricevuti
+    let body = '';
+
+    // Ascolta i dati in arrivo
+    req.on('data', chunk => {
+        body += chunk.toString(); // Concatena i dati ricevuti
+    });
+
+    // Quando tutti i dati sono stati ricevuti
+    req.on('end', async () => {
+        try {
+            const jsonData = JSON.parse(body); // Prova a fare il parsing del JSON
+
+            // Gestisci le richieste in base all'URL
+            if (req.url === '/' && req.method === 'POST') {
+                res.statusCode = 200; // Imposta il codice di stato della risposta
+                res.setHeader('Content-Type', 'application/json'); // Imposta il tipo di contenuto
+
+                // Estrai i dati del controller dal JSON
+                const controller = {
+                    productName: jsonData[0]?.productName,
+                    productId: jsonData[0]?.productId,
+                    vendorId: jsonData[0]?.vendorId
+                };
+
+                // Chiama la funzione per invocare l'addon
+                const addonResult = await getControllerData(controller);
+
+                // Invia la risposta al client con i dati dell'addon
+                res.end(JSON.stringify({
+                    message: 'JSON received!',
+                    addonResult: addonResult, // Dati ritornati dall'addon
+                    data: jsonData
+                }));
+            } else {
+                res.statusCode = 404; // Codice di stato per "Non trovato"
+                res.end('Not Found'); // Risposta di errore
+            }
+        } catch (error) {
+            console.error('Error parsing JSON:', error);
+            res.statusCode = 400; // Codice di stato per "Richiesta non valida"
+            res.end('Invalid JSON'); // Risposta di errore
+        }
+    });
 });
 
+// Gestisci la preflight request per CORS
+server.on('options', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.statusCode = 204; // No Content
+    res.end();
+});
+
+// Gestisci errori del server
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`Port ${port} is already in use. Please use a different port.`);
@@ -25,72 +103,7 @@ server.on('error', (err) => {
     }
 });
 
+// Avvia il server
 server.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-    detectControllers();
+    console.log(`Server running at http://${address}:${port}`);
 });
-
-function detectControllers() {
-    const hidDevices = HID.devices();
-    const hidProducts = hidDevices.map((device) => {
-        if (device.product && device.product !== 'undefined') {
-            return {
-                product: device.product,
-                productId: device.productId,
-                vendorId: device.vendorId
-            };
-        }
-        return null;
-    }).filter(product => product !== null);
-
-    previousControllers = [...new Set(hidProducts)];
-    selectController();
-}
-
-function selectController() {
-    const rl = require('readline').createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    console.log("\nAvailable controllers:");
-    previousControllers.forEach((controller, index) => {
-        console.log(`${index + 1}: ${controller.product} (Product ID: ${controller.productId}, Vendor ID: ${controller.vendorId})`);
-    });
-
-    rl.question('\nEnter the number of the controller to select: ', (answer) => {
-        const index = parseInt(answer) - 1;
-
-        if (index >= 0 && index < previousControllers.length) {
-            selectedController = previousControllers[index];
-            console.log(`\n[INFO] Selected controller: ${selectedController.product}`);
-            getControllerData(selectedController);
-        } else {
-            console.log("\n[ERROR] Invalid selection. Please select a valid controller.");
-        }
-
-        rl.close();
-    });
-}
-
-async function getControllerData(controller) {
-    try {
-        console.log('Caricamento dell\'addon...');
-        const productId = controller.productId;
-        const vendorId = controller.vendorId;
-
-        // Crea un array di dati da inviare (esempio: un array di 64 byte)
-        const dataArray = new Uint8Array(64); // Modifica la lunghezza e i valori come necessario
-
-        addon.loadDLL(
-            (result) => {
-                console.log("Success:", result);
-            },
-            productId, 
-            vendorId, 
-            dataArray
-        ); 
-    } catch (error) {
-        console.error('Errore durante l\'esecuzione dell\'addon:', error);
-    }
-}
